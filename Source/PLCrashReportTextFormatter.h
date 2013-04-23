@@ -53,10 +53,16 @@ typedef enum {
 
     /** Encoding to use for string output. */
     NSStringEncoding _stringEncoding;
+  
+    NSString * _crashAddressIndentity;
 }
 
 + (NSString *) stringValueForCrashReport: (PLCrashReport *) report withTextFormat: (PLCrashReportTextFormat) textFormat;
++ (NSString *) stringValueForCrashReport: (PLCrashReport *) report
+                          withTextFormat: (PLCrashReportTextFormat) textFormat
+                            crashAddress:(NSString **)crashAddress;
 
+@property (nonatomic, retain, readonly) NSString * crashAddressIndentity;
 - (id) initWithTextFormat: (PLCrashReportTextFormat) textFormat stringEncoding: (NSStringEncoding) stringEncoding;
 
 @end

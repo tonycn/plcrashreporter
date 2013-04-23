@@ -49,6 +49,7 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
 + (NSString *) formatStackFrame: (PLCrashReportStackFrameInfo *) frameInfo 
                      frameIndex: (NSUInteger) frameIndex
                          report: (PLCrashReport *) report;
+@property (nonatomic, retain, readwrite) NSString * crashAddressIndentity;
 @end
 
 
@@ -56,7 +57,7 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
  * Formats PLCrashReport data as human-readable text.
  */
 @implementation PLCrashReportTextFormatter
-
+@synthesize crashAddressIndentity = _crashAddressIndentity;
 
 /**
  * Formats the provided @a report as human-readable text in the given @a textFormat, and return
@@ -67,7 +68,16 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
  *
  * @return Returns the formatted result on success, or nil if an error occurs.
  */
-+ (NSString *) stringValueForCrashReport: (PLCrashReport *) report withTextFormat: (PLCrashReportTextFormat) textFormat {
++ (NSString *) stringValueForCrashReport: (PLCrashReport *) report
+                          withTextFormat: (PLCrashReportTextFormat) textFormat {
+    
+    return [self stringValueForCrashReport:report withTextFormat:textFormat crashAddress:nil];
+}
+
+
++ (NSString *) stringValueForCrashReport: (PLCrashReport *) report
+                          withTextFormat: (PLCrashReportTextFormat) textFormat
+                            crashAddress:(NSString **)crashAddress {
 	NSMutableString* text = [NSMutableString string];
 	boolean_t lp64 = true; // quiesce GCC uninitialized value warning
     
@@ -172,11 +182,11 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
         [text appendFormat: @"Hardware Model:      %@\n", hardwareModel];
     }
     
+    NSString *processName = nil;
     /* Application and process info */
     {
         NSString *unknownString = @"???";
-        
-        NSString *processName = unknownString;
+        processName = unknownString;
         NSString *processId = unknownString;
         NSString *processPath = unknownString;
         NSString *parentProcessName = unknownString;
@@ -261,12 +271,20 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
         for (NSUInteger frame_idx = 0; frame_idx < [thread.stackFrames count]; frame_idx++) {
             PLCrashReportStackFrameInfo *frameInfo = [thread.stackFrames objectAtIndex: frame_idx];
             [text appendString: [self formatStackFrame: frameInfo frameIndex: frame_idx report: report]];
+            if (report.exceptionInfo == nil && thread.crashed && *crashAddress == nil) {
+                PLCrashReportBinaryImageInfo *imageInfo = [report imageForAddress: frameInfo.instructionPointer];
+                NSString * imageName = [imageInfo.imageName lastPathComponent];
+                if ([imageName isEqualToString:processName]) {
+                    *crashAddress = [NSString stringWithFormat:@"%08" PRIx64, frameInfo.instructionPointer];
+                }
+            }
         }
         [text appendString: @"\n"];
 
         /* Track the highest thread number */
         maxThreadNum = MAX(maxThreadNum, thread.threadNumber);
     }
+    
     
     /* If an exception stack trace is available, output a pseudo-thread to provide the frame info */
     if (report.exceptionInfo != nil && report.exceptionInfo.stackFrames != nil && [report.exceptionInfo.stackFrames count] > 0) {
@@ -281,6 +299,14 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
         for (NSUInteger frame_idx = 0; frame_idx < [exception.stackFrames count]; frame_idx++) {
             PLCrashReportStackFrameInfo *frameInfo = [exception.stackFrames objectAtIndex: frame_idx];
             [text appendString: [self formatStackFrame: frameInfo frameIndex: frame_idx report: report]];
+            
+            if (*crashAddress == nil) {
+                PLCrashReportBinaryImageInfo *imageInfo = [report imageForAddress: frameInfo.instructionPointer];
+                NSString * imageName = [imageInfo.imageName lastPathComponent];
+                if ([imageName isEqualToString:processName]) {
+                    *crashAddress = [NSString stringWithFormat:@"%08" PRIx64, frameInfo.instructionPointer];
+                }
+            }
         }
         [text appendString: @"\n"];
     }
@@ -423,7 +449,11 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
 
 // from PLCrashReportFormatter protocol
 - (NSData *) formatReport: (PLCrashReport *) report error: (NSError **) outError {
-    NSString *text = [PLCrashReportTextFormatter stringValueForCrashReport: report withTextFormat: _textFormat];
+    NSString * crashAddr = nil;
+    NSString *text = [PLCrashReportTextFormatter stringValueForCrashReport: report
+                                                            withTextFormat: _textFormat
+                                                              crashAddress:&crashAddr];
+    self.crashAddressIndentity = crashAddr;
     return [text dataUsingEncoding: _stringEncoding allowLossyConversion: YES];
 }
 		 
