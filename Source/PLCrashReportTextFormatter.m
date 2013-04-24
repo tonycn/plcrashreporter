@@ -49,7 +49,7 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
 + (NSString *) formatStackFrame: (PLCrashReportStackFrameInfo *) frameInfo 
                      frameIndex: (NSUInteger) frameIndex
                          report: (PLCrashReport *) report;
-@property (nonatomic, retain, readwrite) NSString * crashAddressIndentity;
+@property (nonatomic, retain, readwrite) NSString * crashIdentity;
 @end
 
 
@@ -57,7 +57,7 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
  * Formats PLCrashReport data as human-readable text.
  */
 @implementation PLCrashReportTextFormatter
-@synthesize crashAddressIndentity = _crashAddressIndentity;
+@synthesize crashIdentity = _crashIdentity;
 
 /**
  * Formats the provided @a report as human-readable text in the given @a textFormat, and return
@@ -71,16 +71,17 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
 + (NSString *) stringValueForCrashReport: (PLCrashReport *) report
                           withTextFormat: (PLCrashReportTextFormat) textFormat {
     
-    return [self stringValueForCrashReport:report withTextFormat:textFormat crashAddress:nil];
+    return [self stringValueForCrashReport:report withTextFormat:textFormat crashIdentity:nil];
 }
 
 
 + (NSString *) stringValueForCrashReport: (PLCrashReport *) report
                           withTextFormat: (PLCrashReportTextFormat) textFormat
-                            crashAddress:(NSString **)crashAddress {
+                           crashIdentity:(NSString **)crashIdentity {
 	NSMutableString* text = [NSMutableString string];
 	boolean_t lp64 = true; // quiesce GCC uninitialized value warning
-    
+  
+    NSString * crashAddress = nil;
 	/* Header */
 	
     /* Map to apple style OS nane */
@@ -271,11 +272,11 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
         for (NSUInteger frame_idx = 0; frame_idx < [thread.stackFrames count]; frame_idx++) {
             PLCrashReportStackFrameInfo *frameInfo = [thread.stackFrames objectAtIndex: frame_idx];
             [text appendString: [self formatStackFrame: frameInfo frameIndex: frame_idx report: report]];
-            if (report.exceptionInfo == nil && thread.crashed && *crashAddress == nil) {
+            if (report.exceptionInfo == nil && thread.crashed && crashAddress == nil) {
                 PLCrashReportBinaryImageInfo *imageInfo = [report imageForAddress: frameInfo.instructionPointer];
                 NSString * imageName = [imageInfo.imageName lastPathComponent];
                 if ([imageName isEqualToString:processName]) {
-                    *crashAddress = [NSString stringWithFormat:@"%08" PRIx64, frameInfo.instructionPointer];
+                    crashAddress = [NSString stringWithFormat:@"%08" PRIx64, frameInfo.instructionPointer];
                 }
             }
         }
@@ -300,11 +301,11 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
             PLCrashReportStackFrameInfo *frameInfo = [exception.stackFrames objectAtIndex: frame_idx];
             [text appendString: [self formatStackFrame: frameInfo frameIndex: frame_idx report: report]];
             
-            if (*crashAddress == nil) {
+            if (crashAddress == nil) {
                 PLCrashReportBinaryImageInfo *imageInfo = [report imageForAddress: frameInfo.instructionPointer];
                 NSString * imageName = [imageInfo.imageName lastPathComponent];
                 if ([imageName isEqualToString:processName]) {
-                    *crashAddress = [NSString stringWithFormat:@"%08" PRIx64, frameInfo.instructionPointer];
+                    crashAddress = [NSString stringWithFormat:@"%08" PRIx64, frameInfo.instructionPointer];
                 }
             }
         }
@@ -426,8 +427,10 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
                             uuid,
                             imageInfo.imageName];
     }
-    
-
+    *crashIdentity = [NSString stringWithFormat:@"%@_%@_%@",
+                      report.applicationInfo.applicationIdentifier,
+                      report.applicationInfo.applicationVersion,
+                      crashAddress];
     return text;
 }
 
@@ -449,11 +452,11 @@ NSInteger binaryImageSort(id binary1, id binary2, void *context);
 
 // from PLCrashReportFormatter protocol
 - (NSData *) formatReport: (PLCrashReport *) report error: (NSError **) outError {
-    NSString * crashAddr = nil;
+    NSString * crashIdentity= nil;
     NSString *text = [PLCrashReportTextFormatter stringValueForCrashReport: report
                                                             withTextFormat: _textFormat
-                                                              crashAddress:&crashAddr];
-    self.crashAddressIndentity = crashAddr;
+                                                              crashIdentity:&crashIdentity];
+    self.crashIdentity = crashIdentity;
     return [text dataUsingEncoding: _stringEncoding allowLossyConversion: YES];
 }
 		 
